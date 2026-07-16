@@ -1,13 +1,13 @@
 {
   "functions": {
     "api/extract.py": {
-      "runtime": "vercel-python@3.0.0"
+      "runtime": "vercel-python@python3.9"
     }
   },
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/extract",
-      "destination": "/api/extract.py"
+      "src": "/api/extract",
+      "dest": "api/extract.py"
     }
   ]
 }
