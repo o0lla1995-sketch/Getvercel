@@ -1,53 +1,53 @@
 import { NextResponse } from 'next/server';
+import axios from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+
+const proxies = [
+  "31.59.20.176:6754:Aa45022270:Aa45022270",
+  "31.56.127.193:7684:Aa45022270:Aa45022270",
+  "45.38.107.97:6014:Aa45022270:Aa45022270",
+  "198.105.121.200:6462:Aa45022270:Aa45022270",
+  "64.137.96.74:6641:Aa45022270:Aa45022270",
+  "198.23.243.226:6361:Aa45022270:Aa45022270",
+  "38.154.185.97:6370:Aa45022270:Aa45022270",
+  "84.247.60.125:6095:Aa45022270:Aa45022270",
+  "142.111.67.146:5611:Aa45022270:Aa45022270",
+  "191.96.254.138:6185:Aa45022270:Aa45022270"
+];
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const url = searchParams.get('url');
 
-  if (!url) {
-    return NextResponse.json({ error: "Missing url parameter" }, { status: 400 });
-  }
+  if (!url) return NextResponse.json({ error: "Missing url" }, { status: 400 });
+
+  // اختيار بروكسي عشوائي
+  const rawProxy = proxies[Math.floor(Math.random() * proxies.length)];
+  const [ip, port, user, pass] = rawProxy.split(':');
+  const proxyUrl = `http://${user}:${pass}@${ip}:${port}`;
+  
+  const agent = new HttpsProxyAgent(proxyUrl);
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Referer': 'https://www.xvideos.com/'
+    const response = await axios.get(url, {
+      httpsAgent: agent,
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
       },
-      // إعدادات إضافية لضمان عدم حظر الطلب
-      redirect: 'follow'
+      timeout: 10000 // تحديد وقت انتظار 10 ثوانٍ لضمان عدم تعليق السيرفر
     });
 
-    const text = await response.text();
-    
-    // تجربة البحث عن صيغ مختلفة للرابط (توسيع نطاق البحث)
-    const patterns = [
-      /setVideoUrlHigh\('(.*?)'\)/,
-      /html5player\.setVideoUrlHigh\('(.*?)'\)/,
-      /html5player\.setVideoHLS\('(.*?)'\)/
-    ];
+    const match = response.data.match(/setVideoUrlHigh\('(.*?)'\)/);
 
-    let streamUrl = null;
-    for (let pattern of patterns) {
-      const match = text.match(pattern);
-      if (match) {
-        streamUrl = match[1];
-        break;
-      }
-    }
-
-    if (streamUrl) {
-      return NextResponse.json({ success: true, streamUrl });
+    if (match) {
+      return NextResponse.json({ success: true, streamUrl: match[1] });
     } else {
-      // للتحقق من سبب الفشل، يمكننا طباعة جزء بسيط من النص (للتصحيح فقط)
-      return NextResponse.json({ 
-        error: "Failed to extract", 
-        debug: text.substring(0, 100) // يعطيك أول 100 حرف لتعرف إذا كان الموقع حجبك
-      }, { status: 404 });
+      return NextResponse.json({ error: "Failed to extract (Pattern not found)" }, { status: 404 });
     }
   } catch (e) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Connection error", 
+      details: e.message 
+    }, { status: 500 });
   }
 }
