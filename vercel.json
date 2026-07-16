@@ -1,23 +1,13 @@
 {
+  "functions": {
+    "api/extract.py": {
+      "runtime": "vercel-python@3.0.0"
+    }
+  },
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, OPTIONS"
-        }
-      ]
+      "source": "/api/extract",
+      "destination": "/api/extract.py"
     }
   ]
 }
