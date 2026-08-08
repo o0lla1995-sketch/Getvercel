@@ -17,37 +17,79 @@ const proxies = [
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const url = searchParams.get('url');
+  const targetUrl = searchParams.get('url');
 
-  if (!url) return NextResponse.json({ error: "Missing url" }, { status: 400 });
+  if (!targetUrl) {
+    return NextResponse.json({ error: "Missing url parameter" }, { status: 400 });
+  }
 
-  // اختيار بروكسي عشوائي
-  const rawProxy = proxies[Math.floor(Math.random() * proxies.length)];
-  const [ip, port, user, pass] = rawProxy.split(':');
-  const proxyUrl = `http://${user}:${pass}@${ip}:${port}`;
-  
-  const agent = new HttpsProxyAgent(proxyUrl);
+  // خلط قائمة البروكسيات عشوائياً في كل طلب لضمان عدم ثبات المسار
+  const shuffledProxies = [...proxies].sort(() => 0.5 - Math.random());
 
-  try {
-    const response = await axios.get(url, {
-      httpsAgent: agent,
-      headers: { 
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
-      },
-      timeout: 10000 // تحديد وقت انتظار 10 ثوانٍ لضمان عدم تعليق السيرفر
-    });
+  let htmlContent = null;
+  let lastError = null;
 
-    const match = response.data.match(/setVideoUrlHigh\('(.*?)'\)/);
+  // تجربة ما يصل إلى 5 بروكسيات تلقائياً حتى ينجح أحدهم
+  for (let i = 0; i < Math.min(5, shuffledProxies.length); i++) {
+    const rawProxy = shuffledProxies[i];
+    const [ip, port, user, pass] = rawProxy.split(':');
+    const proxyUrl = `http://${user}:${pass}@${ip}:${port}`;
+    const agent = new HttpsProxyAgent(proxyUrl);
 
-    if (match) {
-      return NextResponse.json({ success: true, streamUrl: match[1] });
-    } else {
-      return NextResponse.json({ error: "Failed to extract (Pattern not found)" }, { status: 404 });
+    try {
+      const response = await axios.get(targetUrl, {
+        httpsAgent: agent,
+        headers: { 
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Referer': 'https://www.xvideos.com/'
+        },
+        timeout: 7000 // مهلة 7 ثوانٍ لكل محاولة لسرعة الاستجابة
+      });
+
+      if (response.status === 200 && response.data) {
+        htmlContent = response.data;
+        break; // نجح جلب الصفحة، الخروج من الحلقة
+      }
+    } catch (e) {
+      lastError = e.message;
+      continue; // الانتقال لتجربة بروكسي آخر فوراً
     }
-  } catch (e) {
+  }
+
+  if (!htmlContent) {
     return NextResponse.json({ 
-      error: "Connection error", 
-      details: e.message 
+      error: "Connection error across all proxies", 
+      details: lastError 
     }, { status: 500 });
+  }
+
+  // أنماط متعددة لاستخراج رابط الفيديو بدقة مطلقة
+  const patterns = [
+    /setVideoUrlHigh\('(.*?)'\)/,
+    /setVideoUrlLow\('(.*?)'\)/,
+    /https:\/\/[^"'\s]+\.xvideos-cdn\.com[^"'\s]+\.mp4[^"'\s]*/,
+    /videoUrl\s*=\s*['"](.*?)['"]/
+  ];
+
+  let streamUrl = null;
+  for (const pattern of patterns) {
+    const match = htmlContent.match(pattern);
+    if (match) {
+      streamUrl = match[1] || match[0];
+      break;
+    }
+  }
+
+  if (streamUrl) {
+    return NextResponse.json({ 
+      success: true, 
+      streamUrl: streamUrl.replace(/\\/g, '') 
+    });
+  } else {
+    return NextResponse.json({ 
+      error: "Failed to extract (Pattern not found)" 
+    }, { status: 404 });
   }
 }
