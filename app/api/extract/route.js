@@ -10,23 +10,24 @@ export async function GET(request) {
   }
 
   try {
-    // استخدام وكيل جلب عام ونظيف يمرر الطلب بـ IP مختلف تماماً لتجاوز الحظر المباشر
-    const proxyApiUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-    
-    const response = await axios.get(proxyApiUrl, {
+    // طلب مباشر من استضافة Vercel إلى رابط الـ Embed
+    const response = await axios.get(targetUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Referer': 'https://www.xvideos.com/'
       },
-      timeout: 10000
+      timeout: 8000 // مهلة 8 ثوانٍ لضمان عدم تعليق السيرفر
     });
 
-    if (!response.data || !response.data.contents) {
-      return NextResponse.json({ error: "Empty response from proxy" }, { status: 404 });
+    if (!response.data) {
+      return NextResponse.json({ error: "Empty response from target" }, { status: 404 });
     }
 
-    const htmlContent = response.data.contents;
+    const htmlContent = response.data;
 
-    // أنماط البحث الشاملة لاستخراج رابط الفيديو المباشر بدقة
+    // أنماط البحث الشاملة لاستخراج رابط الـ MP4 أو الـ CDN المباشر
     const patterns = [
       /setVideoUrlHigh\('(.*?)'\)/,
       /setVideoUrlLow\('(.*?)'\)/,
@@ -50,7 +51,7 @@ export async function GET(request) {
       });
     } else {
       return NextResponse.json({ 
-        error: "Extraction failed: Pattern not found in HTML contents" 
+        error: "Extraction failed: Pattern not found in HTML" 
       }, { status: 404 });
     }
 
