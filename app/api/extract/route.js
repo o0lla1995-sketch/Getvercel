@@ -95,7 +95,7 @@ const PATTERNS = [
   /<meta[^>]+property=["']og:video["'][^>]+content=["']([^"']+)["']/i,
 ];
 
-// ─── v153: Extract video URL from HTML ──────────────────────────────────────
+// ─── Extract video URL from HTML ────────────────────────────────────────────
 function extractVideoUrl(html) {
   for (const pattern of PATTERNS) {
     const match = html.match(pattern);
@@ -105,23 +105,13 @@ function extractVideoUrl(html) {
         .replace(/\\\//g, '/')
         .replace(/&amp;/g, '&')
         .replace(/\\/g, '');
-      // v153: Accept BOTH direct video URLs AND embed.html URLs
-      if (url && url.startsWith('http') && (isDirectVideoUrl(url) || isEmbedHtmlUrl(url))) {
+      // Validate: must be a URL starting with http
+      if (url && url.startsWith('http')) {
         return url;
       }
     }
   }
   return null;
-}
-
-function isDirectVideoUrl(url) {
-  if (!url) return false;
-  return /\.(mp4|webm|ogg|mov|m3u8)(\?|$)/i.test(url.toLowerCase().split('?')[0]);
-}
-
-function isEmbedHtmlUrl(url) {
-  if (!url) return false;
-  return url.toLowerCase().split('?')[0].endsWith('embed.html');
 }
 
 // ─── Main handler ───────────────────────────────────────────────────────────
@@ -208,19 +198,18 @@ export async function GET(request) {
   const streamUrl = extractVideoUrl(htmlContent);
 
   if (streamUrl) {
-    // v153: Return with embedMode flag if it's an embed.html URL
     return NextResponse.json({
       success: true,
       streamUrl: streamUrl,
-      embedMode: isEmbedHtmlUrl(streamUrl),
       htmlLength: htmlContent.length,
     });
   } else {
-    // v153: Extraction failed — return VPN error
+    // Return a sample of the HTML for debugging
+    const sample = htmlContent.slice(0, 500);
     return NextResponse.json({
       success: false,
-      error: 'Video extraction failed — try using a VPN',
-      htmlSample: htmlContent.slice(0, 500),
+      error: 'Pattern not found in HTML',
+      htmlSample: sample,
       htmlLength: htmlContent.length,
     }, { status: 404 });
   }
