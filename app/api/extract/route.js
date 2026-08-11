@@ -1,16 +1,22 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// EXTERNAL EXTRACTION API — v150
+// EXTERNAL EXTRACTION API — Fixed Code (v96)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// v150 NEW: If the URL ends with embed.html or contains /embed/, pass it
-// through directly as an embed URL (no extraction needed — the player
-// will load it in an iframe).
+// Deploy this as a serverless function on Netlify/Vercel/Render.
+// It fetches embed pages via rotating proxies and extracts direct video URLs.
 //
-// FLOW:
-//   1. Check if URL is an embed page → return it directly (embedMode: true)
-//   2. Try extracting direct .mp4/.m3u8 URL via regex
-//   3. If extraction fails but URL looks like embed → return as embed
-//   4. If all fails → return error
+// USAGE: GET /api/extract?url=https://www.xvideos.com/embedframe/xxx
+// RETURNS: { success: true, streamUrl: "https://cdn.../video.mp4" }
+//
+// FIXES applied:
+//   1. Fixed import syntax for https-proxy-agent (v7+ uses named export)
+//   2. Added more regex patterns (double quotes, escaped quotes, hls)
+//   3. Added proper error logging for each proxy attempt
+//   4. Added fallback: if proxy fails, try direct fetch (no proxy)
+//   5. Fixed URL encoding issue — some providers need raw URL, not encoded
+//   6. Added response validation — verify extracted URL is a valid video URL
+//   7. Increased timeout to 10s (was 7s — some proxies are slow)
+//   8. Added proper Content-Type header checking
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { NextResponse } from 'next/server';
@@ -89,7 +95,7 @@ const PATTERNS = [
   /<meta[^>]+property=["']og:video["'][^>]+content=["']([^"']+)["']/i,
 ];
 
-// ─── Extract video URL from HTML ────────────────────────────────────────────
+// ─── v153: Extract video URL from HTML ──────────────────────────────────────
 function extractVideoUrl(html) {
   for (const pattern of PATTERNS) {
     const match = html.match(pattern);
@@ -99,8 +105,8 @@ function extractVideoUrl(html) {
         .replace(/\\\//g, '/')
         .replace(/&amp;/g, '&')
         .replace(/\\/g, '');
-      // Validate: must be a URL starting with http
-      if (url && url.startsWith('http')) {
+      // v153: Accept BOTH direct video URLs AND embed.html URLs
+      if (url && url.startsWith('http') && (isDirectVideoUrl(url) || isEmbedHtmlUrl(url))) {
         return url;
       }
     }
@@ -108,11 +114,14 @@ function extractVideoUrl(html) {
   return null;
 }
 
-// ─── v150: Check if URL is an embed page ────────────────────────────────────
-function isEmbedPageUrl(url) {
+function isDirectVideoUrl(url) {
   if (!url) return false;
-  const lower = url.toLowerCase().split('?')[0];
-  return lower.endsWith('embed.html') || lower.includes('/embed/') || lower.includes('/embedframe/');
+  return /\.(mp4|webm|ogg|mov|m3u8)(\?|$)/i.test(url.toLowerCase().split('?')[0]);
+}
+
+function isEmbedHtmlUrl(url) {
+  if (!url) return false;
+  return url.toLowerCase().split('?')[0].endsWith('embed.html');
 }
 
 // ─── Main handler ───────────────────────────────────────────────────────────
@@ -123,8 +132,6 @@ export async function GET(request) {
   if (!targetUrl) {
     return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
   }
-
-  // v151: NO early embed return — ALWAYS try extraction first
 
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
@@ -201,23 +208,15 @@ export async function GET(request) {
   const streamUrl = extractVideoUrl(htmlContent);
 
   if (streamUrl) {
+    // v153: Return with embedMode flag if it's an embed.html URL
     return NextResponse.json({
       success: true,
       streamUrl: streamUrl,
+      embedMode: isEmbedHtmlUrl(streamUrl),
       htmlLength: htmlContent.length,
     });
   } else {
-    // v151: Extraction failed — ONLY return embed if URL is embed page
-    if (isEmbedPageUrl(targetUrl)) {
-      return NextResponse.json({
-        success: true,
-        streamUrl: targetUrl,
-        embedMode: true,
-        source: 'embed-fallback',
-        htmlLength: htmlContent.length,
-      });
-    }
-    // v151: Not an embed page — return failure (VPN error)
+    // v153: Extraction failed — return VPN error
     return NextResponse.json({
       success: false,
       error: 'Video extraction failed — try using a VPN',
@@ -243,4 +242,4 @@ export async function POST(request) {
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-    }
+}
